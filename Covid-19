@@ -1,0 +1,133 @@
+SELECT * 
+FROM Covid_Portfolio..Covid_Deaths_2
+Where continent is not null
+ORDER BY 3,4;
+
+--SELECT * 
+--FROM Covid_Portfolio..[Covid-Vaccinations-2]
+--ORDER BY 3,4
+
+--Select Data that i'm going to be using 
+
+SELECT location, date, total_cases, new_cases, total_deaths, population 
+FROM Covid_Portfolio..Covid_Deaths_2
+ORDER BY 1,2
+
+--Looking at Total Cases vs Total Deaths
+--Shows what percentage of the population caught covid
+
+SELECT location, date, total_cases, total_deaths, (total_deaths/total_cases)*100 as DeathPercentage 
+FROM Covid_Portfolio..Covid_Deaths_2
+WHERE location like '%states%'
+ORDER BY 1,2;
+
+--Now looking at countries with the highest infection rate compared to population
+
+SELECT location, Population, MAX(total_cases) as HighInfectionCount,MAX((total_cases/population))*100 as PopulationPercentageInfected 
+FROM Covid_Portfolio..Covid_Deaths_2
+--WHERE location like '%states%'
+GROUP By population, location
+ORDER BY PopulationPercentageInfected desc;
+
+-- Showing countries with Highest Death Count per Population
+-- Due to the Data type, I had to convert "total_deaths" to an int using "cast" function
+
+SELECT location, MAX(cast(total_deaths as int)) as TotalDeathCount
+FROM Covid_Portfolio..Covid_Deaths_2
+--WHERE location like '%states%'
+Where continent is not null
+GROUP By location
+ORDER BY TotalDeathCount desc;
+
+-- Breaking things down by Continent
+
+--Showing the continents with Highest Death Counts
+
+SELECT continent, MAX(cast(total_deaths as int)) as TotalDeathCount
+FROM Covid_Portfolio..Covid_Deaths_2
+--WHERE location like '%states%'
+Where continent is not null
+GROUP By continent
+ORDER BY TotalDeathCount desc;
+
+
+--Global Numbers
+
+SELECT SUM(new_cases) as total_cases, SUM(cast(new_deaths as int)) as total_deaths,
+  SUM(cast(new_deaths as int))/SUM(new_cases)*100 as DeathPercentage 
+FROM Covid_Portfolio..Covid_Deaths_2
+--WHERE location like '%states%'
+where continent is not null
+--Group By date
+ORDER BY 1,2;
+
+-- Looking at Data from "Covid_Vaccination" file,
+-- Join both Date and Location from each file.
+-- Total Pop. Vs Vaccs
+-- S/N1: was getting an error using cast(...int), instead used cast(...bigint).
+
+
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+,Sum(cast(vac.new_vaccinations as bigint)) OVER (partition by dea.location order by dea.location, 
+dea.date) as RollingPeopleVax
+FROM Covid_Portfolio..Covid_Deaths_2 dea
+Join Covid_Portfolio..[Covid-Vaccinations-2] vac
+  ON dea.location = vac.location 
+  and dea.date = vac.date
+  where dea.continent is not null
+  order by 2,3
+
+-- USE CTE
+with PopvsVac (continent, location, date, population, new_vaccinations, RollingPeopleVax)
+as 
+(
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+,Sum(cast(vac.new_vaccinations as bigint)) OVER (partition by dea.location order by dea.location, 
+dea.date) as RollingPeopleVax
+FROM Covid_Portfolio..Covid_Deaths_2 dea
+Join Covid_Portfolio..[Covid-Vaccinations-2] vac
+  ON dea.location = vac.location 
+  and dea.date = vac.date
+  where dea.continent is not null
+  --order by 2,3
+  )
+  SELECT *, (RollingPeopleVax/population) *100
+  FROM PopvsVac
+
+  --TEMP TABLE
+  DROP Table if exists #PercentPopulationVaccinated 
+  CREATE table #PercentPopulationVaccinated
+  (
+  continent nvarchar(255),
+  location nvarchar(255),
+  date datetime,
+  population numeric,
+  new_vaccination numeric,
+  RollingPeopleVax numeric
+  )
+  Insert into #PercentPopulationVaccinated
+  SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+,Sum(cast(vac.new_vaccinations as bigint)) OVER (partition by dea.location order by dea.location, 
+dea.date) as RollingPeopleVax
+FROM Covid_Portfolio..Covid_Deaths_2 dea
+Join Covid_Portfolio..[Covid-Vaccinations-2] vac
+  ON dea.location = vac.location 
+  and dea.date = vac.date
+  where dea.continent is not null
+  --order by 2,3
+
+  SELECT *
+  FROM #PercentPopulationVaccinated;
+
+  --Creating a view
+
+  CREATE VIEW PercentPopulationVaccinated as
+  SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+,Sum(cast(vac.new_vaccinations as bigint)) OVER (partition by dea.location order by dea.location, 
+dea.date) as RollingPeopleVax
+FROM Covid_Portfolio..Covid_Deaths_2 dea
+Join Covid_Portfolio..[Covid-Vaccinations-2] vac
+  ON dea.location = vac.location 
+  and dea.date = vac.date
+  where dea.continent is not null
+  --order by 2,3
